@@ -1,0 +1,65 @@
+# render.yaml — Configuración de despliegue en Render.com
+# Documentación: https://render.com/docs/yaml-spec
+#
+# Para desplegar:
+#   1. Sube el proyecto a GitHub
+#   2. En Render → New → Blueprint → conecta el repo
+#   3. Render detectará este archivo automáticamente
+#   4. Configura las variables de entorno marcadas como `sync: false`
+
+services:
+  # ── Backend Django ─────────────────────────────────────────────────────────
+  - type: web
+    name: laptops-backend
+    runtime: python
+    region: oregon       # Cambia a 'frankfurt' si tu audiencia es Europa/Colombia
+    plan: free           # Cambia a 'starter' para producción real (sin sleep)
+    buildCommand: >
+      pip install -r requirements.txt &&
+      python manage.py collectstatic --noinput &&
+      python manage.py migrate --noinput
+    startCommand: gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    healthCheckPath: /api/health/
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: core.settings
+      - key: DEBUG
+        value: "False"
+      - key: PYTHON_VERSION
+        value: "3.12"
+      # ── Variables sensibles (completar en el dashboard de Render) ─────────
+      - key: SECRET_KEY
+        generateValue: true    # Render genera una clave segura automáticamente
+      - key: ALLOWED_HOSTS
+        sync: false            # Completar con el dominio de Render: tu-app.onrender.com
+      - key: GEMINI_API_KEY
+        sync: false            # Tu clave de Google Gemini
+      # ── Base de datos (se configura automáticamente si usas el DB de Render) ──
+      - key: DB_NAME
+        fromDatabase:
+          name: laptops-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: laptops-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: laptops-db
+          property: password
+      - key: DB_HOST
+        fromDatabase:
+          name: laptops-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: laptops-db
+          property: port
+
+# ── Base de datos PostgreSQL administrada por Render ─────────────────────────
+databases:
+  - name: laptops-db
+    databaseName: laptops_db
+    user: laptops_user
+    plan: free   # PostgreSQL gratis (90 días en plan free de Render)
+    region: oregon

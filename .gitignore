@@ -1,0 +1,62 @@
+# ==============================================================================
+# Git Ignore - Backend Django
+# ==============================================================================
+
+# Variables de entorno (¡CRÍTICO: NUNCA SUBIR CREDENCIALES!)
+.env
+.env.*
+!.env.example
+
+# Entorno virtual
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Dependencias de Node (por si se instalan herramientas de frontend en backend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Base de datos local
+db.sqlite3
+*.sqlite3
+*.db
+
+# Archivos estáticos recolectados
+staticfiles/
+static_root/
+
+# Logs
+*.log
+logs/
+
+# Editores e IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Cobertura y testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Empaquetado
+dist/
+build/
+*.egg-info/
