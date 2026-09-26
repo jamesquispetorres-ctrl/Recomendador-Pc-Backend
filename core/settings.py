@@ -81,6 +81,8 @@ _use_sqlite = os.environ.get('USE_SQLITE', 'False').lower() in ('true', '1')
 if not _use_sqlite and _database_url:
     _parsed = urlparse(_database_url)
     _db_host = _parsed.hostname or 'localhost'
+    if _db_host.startswith('dpg-') and '.' not in _db_host:
+        _db_host = f"{_db_host}.oregon-postgres.render.com"
     _db_config = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': unquote(_parsed.path.lstrip('/')),

@@ -1,45 +1,36 @@
-"""
-Script independiente para ejecutar el scraper de laptops.
-
-Puede ser ejecutado directamente:
-    python -m equipos.scraping.scraper
-o
-    python equipos/scraping/scraper.py
-
-Extrae nombre, precio, procesador, RAM, almacenamiento y enlace de producto.
-"""
-import json
+import os
 import sys
-from decimal import Decimal
 
-from equipos.scraping.base import ScraperBase
-from equipos.scraping.tiendas.tecnoshop import TecnoShopScraper
+# Configurar Django para ejecución independiente
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+try:
+    import django
+    django.setup()
+except Exception:
+    pass
+
+from equipos.scraping.mercadolibre import MercadoLibreClient
 
 
-class DecimalEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, Decimal):
-            return float(obj)
-        return super().default(obj)
-
-
-def ejecutar_scraping(tienda_cls=TecnoShopScraper):
+def ejecutar_scraping():
     """
-    Instancia el scraper y ejecuta la extracción de laptops.
+    Instancia el cliente de Mercado Libre Perú y consulta laptops y PCs de escritorio.
     """
-    scraper: ScraperBase = tienda_cls()
-    print(f"=== Iniciando scraping en {scraper.tienda} ===")
-    equipos = scraper.run()
+    cliente = MercadoLibreClient()
+    print(f"=== Consultando API de Mercado Libre Perú (Sitio: {cliente.SITE_ID}) ===")
+    equipos = cliente.obtener_equipos()
 
-    print(f"\nSe extrajeron {len(equipos)} laptops exitosamente:\n")
+    print(f"\nSe obtuvieron {len(equipos)} equipos (Laptops y PCs de escritorio):\n")
     for i, eq in enumerate(equipos, 1):
-        print(f"[{i}] {eq.get('nombre')}")
-        print(f"    - Precio:         S/. {eq.get('precio')}")
+        print(f"[{i}] [{eq.get('tipo', 'laptop').upper()}] {eq.get('nombre')}")
+        print(f"    - Precio:         S/. {eq.get('precio'):,.2f}")
         print(f"    - Procesador:     {eq.get('procesador')}")
         print(f"    - Memoria RAM:    {eq.get('memoria_ram')} GB")
         print(f"    - Almacenamiento: {eq.get('almacenamiento')}")
+        print(f"    - Tarjeta Gráfica:{eq.get('tarjeta_grafica')}")
+        print(f"    - Ubicación:      {eq.get('ciudad')}, {eq.get('departamento')}")
         print(f"    - Enlace:         {eq.get('enlace')}")
-        print("-" * 50)
+        print("-" * 65)
 
     return equipos
 

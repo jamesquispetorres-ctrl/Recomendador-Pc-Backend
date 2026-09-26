@@ -1,13 +1,13 @@
 """
 Comando personalizado de Django: actualizar_precios
 
-Ejecuta el scraping de tiendas de laptops registradas, guarda los nuevos
-equipos en la base de datos si no existen, y si ya existen, registra el
-precio actual en el modelo HistorialPrecio antes de actualizarlo.
+Consulta la API pública de Mercado Libre Perú (sitio MPE) para obtener laptops
+y PCs de escritorio reales, guarda nuevos equipos en la base de datos si no existen,
+y si ya existen, registra el precio actual en el modelo HistorialPrecio antes de actualizarlo.
 
 Uso:
     python manage.py actualizar_precios
-    python manage.py actualizar_precios --tienda tecnoshop
+    python manage.py actualizar_precios --tienda mercadolibre
     python manage.py actualizar_precios --dry-run
 """
 import logging
@@ -18,7 +18,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from equipos.models import Equipo, HistorialPrecio
-from equipos.scraping.tiendas.tecnoshop import TecnoShopScraper
+from equipos.scraping.mercadolibre import MercadoLibreClient
 
 logger = logging.getLogger(__name__)
 
@@ -34,19 +34,16 @@ if hasattr(sys.stderr, 'reconfigure'):
     except Exception:
         pass
 
-# Diccionario de scrapers disponibles para fácil extensión con nuevas tiendas
-SCRAPERS_DISPONIBLES = {
-    'tecnoshop': TecnoShopScraper,
-    # Para agregar una nueva tienda en el futuro:
-    # 1. Crear equipos/scraping/tiendas/mi_tienda.py heredando de ScraperBase
-    # 2. Registrar aquí: 'mi_tienda': MiTiendaScraper
+# Diccionario de fuentes disponibles
+FUENTES_DISPONIBLES = {
+    'mercadolibre': MercadoLibreClient,
 }
 
 
 class Command(BaseCommand):
     help = (
-        'Ejecuta el scraping de tiendas, guarda nuevos equipos en la BD '
-        'y registra el precio anterior en HistorialPrecio si ya existen.'
+        'Obtiene laptops y PCs desde la API de Mercado Libre Perú (MPE), '
+        'guarda nuevos equipos o actualiza precios registrando en HistorialPrecio.'
     )
 
     def add_arguments(self, parser):
@@ -54,7 +51,7 @@ class Command(BaseCommand):
             '--tienda',
             type=str,
             default=None,
-            help=f"Ejecutar solo una tienda específica. Opciones: {', '.join(SCRAPERS_DISPONIBLES.keys())}",
+            help=f"Fuente a consultar. Opciones: {', '.join(FUENTES_DISPONIBLES.keys())}",
         )
         parser.add_argument(
             '--dry-run',
@@ -70,39 +67,40 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING('[DRY-RUN] Modo simulación activo: no se guardarán cambios en la BD.'))
 
-        # Seleccionar qué scrapers ejecutar
+        # Seleccionar qué cliente ejecutar
         if tienda_filtro:
             tienda_nombre = tienda_filtro.lower()
-            if tienda_nombre not in SCRAPERS_DISPONIBLES:
+            if tienda_nombre not in FUENTES_DISPONIBLES:
                 raise CommandError(
-                    f"Tienda '{tienda_nombre}' no reconocida. Opciones disponibles: {', '.join(SCRAPERS_DISPONIBLES.keys())}"
+                    f"Tienda '{tienda_nombre}' no reconocida. Opciones disponibles: {', '.join(FUENTES_DISPONIBLES.keys())}"
                 )
-            scrapers_a_ejecutar = {tienda_nombre: SCRAPERS_DISPONIBLES[tienda_nombre]}
+            fuentes_a_ejecutar = {tienda_nombre: FUENTES_DISPONIBLES[tienda_nombre]}
         else:
-            scrapers_a_ejecutar = SCRAPERS_DISPONIBLES
+            fuentes_a_ejecutar = FUENTES_DISPONIBLES
 
         total_nuevos = 0
         total_actualizados = 0
         total_sin_cambio = 0
         total_errores = 0
 
-        for nombre_tienda, ClaseScraper in scrapers_a_ejecutar.items():
-            self.stdout.write(f"\n>>> Iniciando scraping para tienda: {nombre_tienda.upper()} <<<")
-            self.stdout.write("-" * 60)
+        for nombre_fuente, ClaseCliente in fuentes_a_ejecutar.items():
+            self.stdout.write(f"\n>>> Conectando con: {nombre_fuente.upper()} (Sitio: MPE - Perú) <<<")
+            self.stdout.write("-" * 65)
 
             try:
-                scraper = ClaseScraper()
-                equipos_scrapeados = scraper.run()
+                cliente = ClaseCliente()
+                equipos_obtenidos = cliente.obtener_equipos()
             except Exception as exc:
-                self.stdout.write(self.style.ERROR(f"Error al ejecutar scraper {nombre_tienda}: {exc}"))
-                logger.error("Error al ejecutar scraper %s: %s", nombre_tienda, exc, exc_info=True)
+                # Requisito: registrar el error en el registro de eventos sin detener el resto del proceso
+                self.stdout.write(self.style.ERROR(f"Error al conectar con {nombre_fuente}: {exc}"))
+                logger.error("Error al conectar con la API de %s: %s", nombre_fuente, exc, exc_info=True)
                 continue
 
-            if not equipos_scrapeados:
-                self.stdout.write(self.style.WARNING(f"No se obtuvieron equipos de {nombre_tienda}."))
+            if not equipos_obtenidos:
+                self.stdout.write(self.style.WARNING(f"No se obtuvieron equipos de {nombre_fuente}."))
                 continue
 
-            for datos in equipos_scrapeados:
+            for datos in equipos_obtenidos:
                 try:
                     resultado = self._procesar_equipo(datos, dry_run)
                     if resultado == 'creado':
@@ -116,14 +114,14 @@ class Command(BaseCommand):
                     logger.error("Error al procesar equipo %s: %s", datos.get('nombre'), exc, exc_info=True)
                     self.stdout.write(self.style.ERROR(f"  [ERROR] {datos.get('nombre')} -> {exc}"))
 
-        # Resumen de resultados
-        self.stdout.write("\n" + "=" * 60)
-        self.stdout.write(self.style.SUCCESS(f"Scraping completado."))
-        self.stdout.write(self.style.SUCCESS(f"  * Nuevos equipos guardados:    {total_nuevos}"))
-        self.stdout.write(self.style.SUCCESS(f"  * Precios actualizados en BD:  {total_actualizados}"))
-        self.stdout.write(f"  * Equipos sin cambio de precio: {total_sin_cambio}")
+        # Resumen final
+        self.stdout.write("\n" + "=" * 65)
+        self.stdout.write(self.style.SUCCESS(f"Sincronización con Mercado Libre completada."))
+        self.stdout.write(self.style.SUCCESS(f"  * Nuevos equipos guardados en BD:  {total_nuevos}"))
+        self.stdout.write(self.style.SUCCESS(f"  * Precios actualizados en BD:      {total_actualizados}"))
+        self.stdout.write(f"  * Equipos sin cambio de precio:     {total_sin_cambio}")
         if total_errores > 0:
-            self.stdout.write(self.style.ERROR(f"  * Errores encontrados:         {total_errores}"))
+            self.stdout.write(self.style.ERROR(f"  * Errores registrados:             {total_errores}"))
 
     @transaction.atomic
     def _procesar_equipo(self, datos: dict, dry_run: bool) -> str:
@@ -136,19 +134,20 @@ class Command(BaseCommand):
         """
         marca = datos.get('marca') or 'Genérico'
         modelo = datos.get('modelo') or datos.get('nombre', 'Modelo Desconocido')
-        tienda = datos.get('tienda') or 'TecnoShop'
+        tienda = datos.get('tienda') or 'Mercado Libre'
         enlace = datos.get('enlace') or ''
         precio_nuevo = Decimal(str(datos.get('precio', 0)))
 
         if precio_nuevo <= Decimal('0'):
             return 'sin_cambio'
 
-        # Buscar si el equipo ya existe: primero por marca+modelo+tienda, o por enlace_compra
+        # Buscar si el equipo ya existe:
+        # Primero por enlace de compra (permalink de Mercado Libre es único), luego por marca+modelo+tienda
         equipo = None
         if enlace:
             equipo = Equipo.objects.filter(enlace_compra=enlace).first()
         if not equipo:
-            equipo = Equipo.objects.filter(marca__iexact=marca, modelo__iexact=modelo, tienda__iexact=tienda).first()
+            equipo = Equipo.objects.filter(marca__iexact=marca, modelo__iexact=modelo, tienda=tienda).first()
 
         if equipo:
             # ── El equipo YA EXISTE ───────────────────────────────────────────
@@ -156,31 +155,28 @@ class Command(BaseCommand):
 
             if precio_actual != precio_nuevo:
                 if not dry_run:
-                    # 1. Registrar el precio actual en el modelo HistorialPrecio ANTES de actualizarlo
+                    # 1. Registrar el precio actual en HistorialPrecio ANTES de actualizarlo
                     HistorialPrecio.objects.create(
                         equipo=equipo,
                         precio=precio_actual,
                     )
 
-                    # 2. Actualizar al nuevo precio
+                    # 2. Actualizar al nuevo precio y actualizar datos de contacto/enlace
                     equipo.precio = precio_nuevo
-                    # Opcionalmente refrescar especificaciones si se obtuvieron
-                    if datos.get('procesador') and datos.get('procesador') != 'No especificado':
-                        equipo.procesador = datos.get('procesador')
-                    if datos.get('memoria_ram'):
-                        equipo.memoria_ram = datos.get('memoria_ram')
-                    if datos.get('almacenamiento') and datos.get('almacenamiento') != 'No especificado':
-                        equipo.almacenamiento = datos.get('almacenamiento')
                     if enlace:
                         equipo.enlace_compra = enlace
+                    if datos.get('ciudad'):
+                        equipo.ciudad = datos.get('ciudad')
+                    if datos.get('departamento'):
+                        equipo.departamento = datos.get('departamento')
 
-                    equipo.save()
+                    equipo.save(update_fields=['precio', 'enlace_compra', 'ciudad', 'departamento', 'actualizado_en'])
 
                 cambio = precio_nuevo - precio_actual
                 signo = "+" if cambio > 0 else ""
                 self.stdout.write(
                     f"  [ACTUALIZADO] {equipo.marca} {equipo.modelo}\n"
-                    f"     Historial registrado: S/. {precio_actual:,.2f} -> Nuevo precio: S/. {precio_nuevo:,.2f} ({signo}{cambio:,.2f})"
+                    f"     Historial guardado: S/. {precio_actual:,.2f} -> Nuevo precio: S/. {precio_nuevo:,.2f} ({signo}{cambio:,.2f})"
                 )
                 return 'actualizado'
             else:
@@ -198,17 +194,17 @@ class Command(BaseCommand):
                     memoria_ram=datos.get('memoria_ram', 16),
                     almacenamiento=datos.get('almacenamiento', '512GB SSD'),
                     tarjeta_grafica=datos.get('tarjeta_grafica', 'Integrada'),
-                    tamanio_pantalla=datos.get('tamanio_pantalla', 15.6),
+                    tamanio_pantalla=datos.get('tamanio_pantalla'),
                     precio=precio_nuevo,
                     tienda=tienda,
-                    enlace_compra=enlace or f"https://tienda.com/{marca.lower()}-{modelo.lower()}",
+                    enlace_compra=enlace or 'https://www.mercadolibre.com.pe',
                     ciudad=datos.get('ciudad', 'Lima'),
                     departamento=datos.get('departamento', 'Lima'),
                 )
 
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"  [NUEVO EQUIPO] {marca} {modelo} | S/. {precio_nuevo:,.2f} | {datos.get('procesador')} | {datos.get('memoria_ram')}GB RAM"
+                    f"  [NUEVO EQUIPO] [{datos.get('tipo', 'laptop').upper()}] {marca} {modelo} | S/. {precio_nuevo:,.2f} | Ubicación: {datos.get('ciudad', 'Lima')}"
                 )
             )
             return 'creado'
