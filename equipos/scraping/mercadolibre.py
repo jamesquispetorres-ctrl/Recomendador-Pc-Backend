@@ -30,7 +30,7 @@ ITEMS_FALLBACK_MERCADOLIBRE = [
     {
         'title': 'Laptop Lenovo Ideapad 3 15iau7 Intel Core I5 12va 16gb Ram 512gb Ssd',
         'price': 2299.00,
-        'permalink': 'https://articulo.mercadolibre.com.pe/MPE-628491023-laptop-lenovo-ideapad-3-intel-i5-16gb-ssd-_JM',
+        'permalink': 'https://listado.mercadolibre.com.pe/lenovo-ideapad-3-15iau7',
         'address': {'city_name': 'Lima', 'state_name': 'Lima'},
         'attributes': [
             {'id': 'BRAND', 'value_name': 'Lenovo'},
@@ -46,7 +46,7 @@ ITEMS_FALLBACK_MERCADOLIBRE = [
     {
         'title': 'Laptop Gamer Asus Tuf Gaming F15 Core I7 12700h Rtx 4060 16gb 512gb',
         'price': 4899.00,
-        'permalink': 'https://articulo.mercadolibre.com.pe/MPE-639104812-laptop-gamer-asus-tuf-f15-i7-rtx-4060-_JM',
+        'permalink': 'https://listado.mercadolibre.com.pe/asus-tuf-gaming-f15',
         'address': {'city_name': 'Miraflores', 'state_name': 'Lima'},
         'attributes': [
             {'id': 'BRAND', 'value_name': 'Asus'},
@@ -62,7 +62,7 @@ ITEMS_FALLBACK_MERCADOLIBRE = [
     {
         'title': 'Laptop Hp Pavilion 15 Amd Ryzen 7 5700u 16gb Ram 512gb Ssd Fhd',
         'price': 2649.00,
-        'permalink': 'https://articulo.mercadolibre.com.pe/MPE-641029481-laptop-hp-pavilion-15-ryzen-7-16gb-ssd-_JM',
+        'permalink': 'https://listado.mercadolibre.com.pe/hp-pavilion-15-eh1000la',
         'address': {'city_name': 'Arequipa', 'state_name': 'Arequipa'},
         'attributes': [
             {'id': 'BRAND', 'value_name': 'HP'},
@@ -78,7 +78,7 @@ ITEMS_FALLBACK_MERCADOLIBRE = [
     {
         'title': 'Apple MacBook Air 13 M2 8-core CPU 8-core GPU 8gb 256gb Ssd',
         'price': 4299.00,
-        'permalink': 'https://articulo.mercadolibre.com.pe/MPE-618491823-apple-macbook-air-13-chip-m2-8gb-256gb-_JM',
+        'permalink': 'https://listado.mercadolibre.com.pe/apple-macbook-air-m2',
         'address': {'city_name': 'San Isidro', 'state_name': 'Lima'},
         'attributes': [
             {'id': 'BRAND', 'value_name': 'Apple'},
@@ -94,7 +94,7 @@ ITEMS_FALLBACK_MERCADOLIBRE = [
     {
         'title': 'PC De Escritorio Gamer Core I5 12400f Rtx 3060 16gb Ram Ssd 1tb',
         'price': 3499.00,
-        'permalink': 'https://articulo.mercadolibre.com.pe/MPE-650284912-computadora-gamer-intel-core-i5-12400f-rtx-3060-_JM',
+        'permalink': 'https://listado.mercadolibre.com.pe/pc-gamer-rtx-3060',
         'address': {'city_name': 'Lima', 'state_name': 'Lima'},
         'attributes': [
             {'id': 'BRAND', 'value_name': 'Custom Build'},
@@ -109,7 +109,7 @@ ITEMS_FALLBACK_MERCADOLIBRE = [
     {
         'title': 'Computadora De Escritorio Amd Ryzen 5 5600g 16gb Ram 500gb Ssd Para Oficina',
         'price': 1799.00,
-        'permalink': 'https://articulo.mercadolibre.com.pe/MPE-651928410-pc-escritorio-ryzen-5-5600g-16gb-ssd-_JM',
+        'permalink': 'https://listado.mercadolibre.com.pe/pc-oficina-ryzen-5',
         'address': {'city_name': 'Trujillo', 'state_name': 'La Libertad'},
         'attributes': [
             {'id': 'BRAND', 'value_name': 'Custom Build'},
@@ -124,7 +124,7 @@ ITEMS_FALLBACK_MERCADOLIBRE = [
     {
         'title': 'PC Gamer Avanzada Ryzen 7 5700x Rtx 4070 32gb Ddr4 1tb Nvme',
         'price': 5799.00,
-        'permalink': 'https://articulo.mercadolibre.com.pe/MPE-658291039-pc-gamer-ryzen-7-5700x-rtx-4070-32gb-ram-_JM',
+        'permalink': 'https://listado.mercadolibre.com.pe/pc-gamer-ultra-rtx-4070',
         'address': {'city_name': 'Cusco', 'state_name': 'Cusco'},
         'attributes': [
             {'id': 'BRAND', 'value_name': 'Custom Build'},

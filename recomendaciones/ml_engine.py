@@ -150,11 +150,65 @@ def recomendar(
 
     # ── 5. Ordenar y retornar top-N ───────────────────────────────────────────
     indices_ordenados = np.argsort(scores)[::-1][:top_n]
+    max_score = float(np.max(scores)) if len(scores) > 0 and float(np.max(scores)) > 0 else 1.0
 
+    import re
     resultados = []
     for idx in indices_ordenados:
         equipo = equipos[idx]
         score = float(scores[idx])
+        precio_val = float(equipo.precio)
+        ahorro = max(0.0, float(presupuesto) - precio_val)
+
+        # ── Cálculo de Beneficio (0 - 100%) ──────────────────────────────
+        # 1. Afinidad técnica relativa (hasta 55 pts)
+        afinidad_rel = (score / max_score) if max_score > 0 else 0.5
+        pts_tecnicos = afinidad_rel * 55.0
+
+        # 2. Eficiencia y ahorro de presupuesto (hasta 35 pts)
+        ratio = precio_val / float(presupuesto) if presupuesto > 0 else 1.0
+        if 0.50 <= ratio <= 0.96:
+            pts_presupuesto = 35.0
+        elif ratio < 0.50:
+            pts_presupuesto = 31.0
+        else:
+            pts_presupuesto = 26.0
+
+        # 3. Calidad de componentes (hasta 10 pts)
+        pts_hardware = 0.0
+        if equipo.memoria_ram >= 16:
+            pts_hardware += 4.0
+        elif equipo.memoria_ram >= 8:
+            pts_hardware += 2.0
+
+        alm = (equipo.almacenamiento or '').lower()
+        if 'ssd' in alm or 'nvme' in alm:
+            pts_hardware += 3.0
+
+        gpu = (equipo.tarjeta_grafica or '').lower()
+        if any(g in gpu for g in ['rtx', 'gtx', 'radeon', 'geforce', 'rx ']):
+            pts_hardware += 3.0
+        else:
+            pts_hardware += 1.0
+
+        total_beneficio = int(round(pts_tecnicos + pts_presupuesto + pts_hardware))
+        total_beneficio = max(60, min(98, total_beneficio))
+
+        if total_beneficio >= 92:
+            etiqueta_beneficio = "Excelente opción · Máximo beneficio"
+        elif total_beneficio >= 82:
+            etiqueta_beneficio = "Muy beneficioso · Gran balance"
+        else:
+            etiqueta_beneficio = "Buena alternativa · Precio accesible"
+
+        # Asegurar enlace directo y activo a Mercado Libre Perú
+        enlace = equipo.enlace_compra or ''
+        if not enlace or 'MPE-' in enlace or 'articulo.mercadolibre' in enlace:
+            clean_marca = '' if equipo.marca.lower() in equipo.modelo.lower() or 'custom' in equipo.marca.lower() else equipo.marca
+            name = f"{clean_marca} {equipo.modelo}".strip()
+            slug = re.sub(r'[^a-zA-Z0-9]+', '-', name.lower()).strip('-')
+            enlace = f"https://listado.mercadolibre.com.pe/{slug}"
+
         resultados.append({
             'id': equipo.id,
             'tipo': equipo.tipo,
@@ -165,12 +219,15 @@ def recomendar(
             'almacenamiento': equipo.almacenamiento,
             'tarjeta_grafica': equipo.tarjeta_grafica,
             'tamanio_pantalla': equipo.tamanio_pantalla,
-            'precio': float(equipo.precio),
+            'precio': precio_val,
             'tienda': equipo.tienda,
-            'enlace_compra': equipo.enlace_compra,
+            'enlace_compra': enlace,
             'ciudad': equipo.ciudad,
             'departamento': equipo.departamento,
             'score_afinidad': round(score, 4),
+            'porcentaje_beneficio': total_beneficio,
+            'etiqueta_beneficio': etiqueta_beneficio,
+            'ahorro': round(ahorro, 2),
             'explicacion': None,  # Se rellena en la view con Gemini
         })
 
