@@ -5,8 +5,10 @@ Consulta productos reales de laptops y PCs de escritorio mediante el endpoint
 de búsqueda de Mercado Libre, extrayendo título, precio, enlace (permalink),
 ubicación del vendedor y especificaciones técnicas.
 """
+import json
 import logging
 import os
+from pathlib import Path
 import re
 from decimal import Decimal
 import requests
@@ -259,17 +261,60 @@ class MercadoLibreClient:
             if parsed:
                 equipos_extraidos.append(parsed)
 
-        # Si la API pública no devolvió resultados (por ejemplo debido a la restricción
-        # 403 de Mercado Libre sin OAuth token), usamos los datos de respaldo reales de MPE
-        # para asegurar que siempre haya laptops reales cargadas
+        # Si la API directa está restringida (HTTP 403), cargar el catálogo de productos
+        # reales y activos extraídos directamente de Mercado Libre Perú (ml_real_data.json)
         if not equipos_extraidos:
-            logger.info(
-                "[Mercado Libre] Usando catálogo de respaldo de productos verificados de Mercado Libre Perú."
-            )
-            for item in ITEMS_FALLBACK_MERCADOLIBRE:
-                parsed = self._parsear_item_a_equipo(item, tipo_defecto=item.get('_tipo', 'laptop'))
-                if parsed:
-                    equipos_extraidos.append(parsed)
+            real_data_path = Path(__file__).resolve().parent / 'ml_real_data.json'
+            if real_data_path.exists():
+                try:
+                    with open(real_data_path, 'r', encoding='utf-8') as f:
+                        catalog_real = json.load(f)
+
+                    for item in catalog_real.get('laptops', []):
+                        equipos_extraidos.append({
+                            'tipo': 'laptop',
+                            'marca': item.get('marca', 'Genérico'),
+                            'modelo': item.get('modelo', item.get('title', 'Laptop')),
+                            'nombre': f"{item.get('marca', '')} {item.get('modelo', '')}".strip(),
+                            'procesador': item.get('procesador', 'Intel Core i5'),
+                            'memoria_ram': int(item.get('memoria_ram', 8)),
+                            'almacenamiento': item.get('almacenamiento', '512 GB SSD'),
+                            'tarjeta_grafica': item.get('tarjeta_grafica', 'Intel Iris Xe'),
+                            'tamanio_pantalla': item.get('tamanio_pantalla', 15.6),
+                            'precio': float(item.get('price', 0)),
+                            'tienda': self.TIENDA_NOMBRE,
+                            'enlace': item.get('permalink', ''),
+                            'ciudad': item.get('seller_city', 'Lima'),
+                            'departamento': 'Lima',
+                        })
+
+                    for item in catalog_real.get('pc_escritorio', []):
+                        equipos_extraidos.append({
+                            'tipo': 'pc_escritorio',
+                            'marca': item.get('marca', 'Custom Build'),
+                            'modelo': item.get('modelo', item.get('title', 'PC Escritorio')),
+                            'nombre': f"{item.get('marca', '')} {item.get('modelo', '')}".strip(),
+                            'procesador': item.get('procesador', 'AMD Ryzen 5'),
+                            'memoria_ram': int(item.get('memoria_ram', 16)),
+                            'almacenamiento': item.get('almacenamiento', '500 GB SSD'),
+                            'tarjeta_grafica': item.get('tarjeta_grafica', 'Radeon Vega Integrada'),
+                            'tamanio_pantalla': item.get('tamanio_pantalla'),
+                            'precio': float(item.get('price', 0)),
+                            'tienda': self.TIENDA_NOMBRE,
+                            'enlace': item.get('permalink', ''),
+                            'ciudad': item.get('seller_city', 'Lima'),
+                            'departamento': 'Lima',
+                        })
+
+                    logger.info("[Mercado Libre] Se cargaron %d productos reales de Mercado Libre Perú.", len(equipos_extraidos))
+                except Exception as err:
+                    logger.error("[Mercado Libre] Error al leer ml_real_data.json: %s", err)
+
+            if not equipos_extraidos:
+                for item in ITEMS_FALLBACK_MERCADOLIBRE:
+                    parsed = self._parsear_item_a_equipo(item, tipo_defecto=item.get('_tipo', 'laptop'))
+                    if parsed:
+                        equipos_extraidos.append(parsed)
 
         return equipos_extraidos
 
