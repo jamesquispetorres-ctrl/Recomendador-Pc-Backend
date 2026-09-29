@@ -44,7 +44,7 @@ class RecomendarView(APIView):
         tipo_uso = data.get('tipo_uso', '').lower().strip()
         tipo_equipo = data.get('tipo_equipo', 'ambos').lower().strip()
         ubicacion = data.get('ubicacion', None)
-        con_explicacion = data.get('con_explicacion', False)
+        con_explicacion = data.get('con_explicacion', True)
 
         errores = {}
         if presupuesto is None:

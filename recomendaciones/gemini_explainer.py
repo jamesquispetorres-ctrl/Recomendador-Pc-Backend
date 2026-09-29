@@ -54,16 +54,17 @@ def generar_explicacion(equipo: dict, tipo_uso: str) -> str:
 def _construir_prompt(equipo: dict, tipo_uso: str) -> str:
     """Construye el prompt para Gemini."""
     return (
-        f"Eres un experto en tecnología. Explica en máximo 2 oraciones, "
-        f"en español colombiano informal y amigable, por qué el siguiente equipo "
-        f"es una buena opción para uso de {tipo_uso}.\n\n"
+        f"Eres un experto en tecnología y hardware. Explica en máximo 2 oraciones breves, "
+        f"en español claro y profesional, por qué el siguiente equipo disponible en Mercado Libre Perú "
+        f"es una excelente opción de compra para uso de {tipo_uso}.\n\n"
         f"Equipo: {equipo.get('marca')} {equipo.get('modelo')}\n"
         f"Procesador: {equipo.get('procesador')}\n"
         f"RAM: {equipo.get('memoria_ram')} GB\n"
         f"Almacenamiento: {equipo.get('almacenamiento')}\n"
         f"Tarjeta gráfica: {equipo.get('tarjeta_grafica', 'Integrada')}\n"
-        f"Precio: ${equipo.get('precio', 0):,.0f} COP\n\n"
-        f"Responde solo con la explicación, sin títulos ni bullet points."
+        f"Precio: S/. {float(equipo.get('precio', 0)):,.2f} (Soles Peruanos)\n"
+        f"Plataforma: Mercado Libre Perú\n\n"
+        f"Responde solo con la explicación concisa, destacando su valor en Mercado Libre, sin títulos ni viñetas."
     )
 
 
@@ -73,6 +74,6 @@ def _explicacion_generica(equipo: dict, tipo_uso: str) -> str:
     procesador = equipo.get('procesador', '')
     return (
         f"El {equipo.get('marca')} {equipo.get('modelo')} con {ram}GB de RAM "
-        f"y procesador {procesador} es una opción sólida para {tipo_uso}, "
-        f"equilibrando rendimiento y precio dentro de tu presupuesto."
+        f"y procesador {procesador} es una excelente opción en Mercado Libre Perú para {tipo_uso}, "
+        f"equilibrando rendimiento, disponibilidad y precio dentro de tu presupuesto."
     )
