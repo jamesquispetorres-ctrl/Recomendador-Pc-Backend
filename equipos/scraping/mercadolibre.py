@@ -154,21 +154,23 @@ class MercadoLibreClient:
     def __init__(self, access_token: str | None = None):
         self.session = requests.Session()
         self.session.headers.update(HEADERS_MERCADOLIBRE)
-        
-        # Permitir pasar token o leerlo de variable de entorno si el usuario lo tiene
-        token = access_token or os.environ.get('MERCADOLIBRE_ACCESS_TOKEN', '').strip()
+
+        from equipos.scraping.ml_auth import obtener_token_valido
+
+        # Obtener token válido (o refrescarlo automáticamente si ya teníamos refresh_token)
+        token = access_token or obtener_token_valido()
         if token:
             self.session.headers['Authorization'] = f'Bearer {token}'
 
     def buscar_por_termino(self, query: str, limit: int = 50, tipo_equipo: str = 'laptop') -> list[dict]:
         """
         Consulta el endpoint de búsqueda de Mercado Libre para el sitio MPE con una palabra clave.
-        
+
         Endpoint:
             GET https://api.mercadolibre.com/sites/MPE/search?q={query}&limit={limit}
-            
-        Si la petición falla por cualquier motivo (red, status HTTP, etc.),
-        se registra el error en el log sin detener el proceso.
+
+        Si el token expira (401), se renueva automáticamente con el refresh_token y reintenta.
+        Si la petición falla por cualquier otro motivo, se registra el error sin detener el proceso.
         """
         url = f"{self.BASE_URL}/sites/{self.SITE_ID}/search"
         params = {
@@ -180,6 +182,20 @@ class MercadoLibreClient:
 
         try:
             response = self.session.get(url, params=params, timeout=12)
+
+            # Si el token expiró (401), intentar refrescar automáticamente y reintentar una vez
+            if response.status_code == 401:
+                logger.info("[Mercado Libre] Token expirado (401). Intentando renovación automática con refresh_token...")
+                try:
+                    from equipos.scraping.ml_auth import refrescar_token
+                    data_refresh = refrescar_token()
+                    nuevo_token = data_refresh.get('access_token')
+                    if nuevo_token:
+                        self.session.headers['Authorization'] = f'Bearer {nuevo_token}'
+                        logger.info("[Mercado Libre] Reintentando búsqueda de '%s' con nuevo token renovado...", query)
+                        response = self.session.get(url, params=params, timeout=12)
+                except Exception as rf_exc:
+                    logger.warning("[Mercado Libre] No se pudo refrescar el token automáticamente: %s", rf_exc)
 
             if response.status_code != 200:
                 logger.warning(
@@ -193,8 +209,7 @@ class MercadoLibreClient:
             data = response.json()
             results = data.get('results', [])
             logger.info("[Mercado Libre] Se obtuvieron %d resultados desde la API para '%s'.", len(results), query)
-            
-            # Anotar el tipo para el mapeo posterior
+
             for item in results:
                 item['_tipo'] = tipo_equipo
 
