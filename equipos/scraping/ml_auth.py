@@ -90,21 +90,23 @@ def limpiar_codigo_autorizacion(codigo_o_url: str) -> str:
     return texto
 
 
-def guardar_tokens_en_env(access_token: str, refresh_token: str) -> bool:
+def guardar_tokens_en_env(access_token: str | None, refresh_token: str | None) -> bool:
     """
     Actualiza o agrega automáticamente ML_ACCESS_TOKEN y ML_REFRESH_TOKEN
     en el archivo .env de forma segura y persistente.
     """
     try:
+        a_tok = str(access_token or '').strip()
+        r_tok = str(refresh_token or '').strip()
+
         # Actualizar en memoria del proceso actual
-        os.environ['ML_ACCESS_TOKEN'] = access_token
-        os.environ['ML_REFRESH_TOKEN'] = refresh_token
+        os.environ['ML_ACCESS_TOKEN'] = a_tok
+        os.environ['ML_REFRESH_TOKEN'] = r_tok
 
         if not ENV_PATH.exists():
-            # Si no existe, crearlo
             with open(ENV_PATH, 'w', encoding='utf-8') as f:
-                f.write(f"ML_ACCESS_TOKEN={access_token}\n")
-                f.write(f"ML_REFRESH_TOKEN={refresh_token}\n")
+                f.write(f"ML_ACCESS_TOKEN={a_tok}\n")
+                f.write(f"ML_REFRESH_TOKEN={r_tok}\n")
             return True
 
         contenido = ENV_PATH.read_text(encoding='utf-8')
@@ -113,23 +115,23 @@ def guardar_tokens_en_env(access_token: str, refresh_token: str) -> bool:
         if re.search(r'^ML_ACCESS_TOKEN=.*$', contenido, flags=re.MULTILINE):
             contenido = re.sub(
                 r'^ML_ACCESS_TOKEN=.*$',
-                f"ML_ACCESS_TOKEN={access_token}",
+                f"ML_ACCESS_TOKEN={a_tok}",
                 contenido,
                 flags=re.MULTILINE,
             )
         else:
-            contenido += f"\nML_ACCESS_TOKEN={access_token}"
+            contenido += f"\nML_ACCESS_TOKEN={a_tok}"
 
         # Reemplazar o agregar ML_REFRESH_TOKEN
         if re.search(r'^ML_REFRESH_TOKEN=.*$', contenido, flags=re.MULTILINE):
             contenido = re.sub(
                 r'^ML_REFRESH_TOKEN=.*$',
-                f"ML_REFRESH_TOKEN={refresh_token}",
+                f"ML_REFRESH_TOKEN={r_tok}",
                 contenido,
                 flags=re.MULTILINE,
             )
         else:
-            contenido += f"\nML_REFRESH_TOKEN={refresh_token}"
+            contenido += f"\nML_REFRESH_TOKEN={r_tok}"
 
         ENV_PATH.write_text(contenido, encoding='utf-8')
         logger.info("[Mercado Libre OAuth] Tokens guardados exitosamente en %s", ENV_PATH)
