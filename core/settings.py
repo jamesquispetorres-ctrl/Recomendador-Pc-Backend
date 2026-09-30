@@ -14,8 +14,15 @@ load_dotenv(BASE_DIR / '.env')
 # ─── Seguridad ────────────────────────────────────────────────────────────────
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-clave-de-desarrollo-local')
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
-_raw_hosts = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com')
+_raw_hosts = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com,recomendador-pc-backend.onrender.com')
 ALLOWED_HOSTS = [h.strip() for h in _raw_hosts.split(',') if h.strip()]
+render_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if render_host and render_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_host)
+if 'recomendador-pc-backend.onrender.com' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('recomendador-pc-backend.onrender.com')
+if '.onrender.com' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('.onrender.com')
 if 'testserver' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('testserver')
 
@@ -156,7 +163,23 @@ REST_FRAMEWORK = {
 
 # ─── CORS ─────────────────────────────────────────────────────────────────────
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',   # Vite dev server
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
     'http://localhost:3000',
+    'https://recomendador-pc-frontend.vercel.app',
 ]
+
+# Leer URL de frontend desde la variable de entorno FRONTEND_URL
+_frontend_env = os.environ.get('FRONTEND_URL', '').strip()
+if _frontend_env:
+    for _url in _frontend_env.split(','):
+        _clean = _url.strip().rstrip('/')
+        if _clean and _clean not in CORS_ALLOWED_ORIGINS:
+            CORS_ALLOWED_ORIGINS.append(_clean)
+
+# Permitir también cualquier subdominio de Vercel (despliegues de preview / producción)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https:\/\/.*\.vercel\.app$",
+]
+
 CORS_ALLOW_CREDENTIALS = True
