@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from rest_framework.routers import DefaultRouter
 from equipos.views import EquipoViewSet
-from recomendaciones.views import RecomendarView
+from recomendaciones.views import RecomendarView, CatalogoView, ChatView
 
 # ─── Router DRF ──────────────────────────────────────────────────────────────
 router = DefaultRouter()
@@ -94,6 +94,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api/recomendar/', RecomendarView.as_view(), name='recomendar'),
+    path('api/catalogo/', CatalogoView.as_view(), name='catalogo'),
+    path('api/chat/', ChatView.as_view(), name='chat-gemini'),
     path('api/health/', health_check, name='health'),
     path('health/', health_check, name='health-root'),
     path('api/auth/mercadolibre/callback/', mercadolibre_callback, name='ml-callback'),

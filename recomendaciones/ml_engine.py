@@ -221,14 +221,126 @@ def recomendar(
             'tamanio_pantalla': equipo.tamanio_pantalla,
             'precio': precio_val,
             'tienda': equipo.tienda,
-            'enlace_compra': enlace,
+            'enlace_compra': equipo.enlace_compra or enlace,
+            'imagen_url': equipo.imagen_url or None,
             'ciudad': equipo.ciudad,
             'departamento': equipo.departamento,
             'score_afinidad': round(score, 4),
             'porcentaje_beneficio': total_beneficio,
             'etiqueta_beneficio': etiqueta_beneficio,
             'ahorro': round(ahorro, 2),
-            'explicacion': None,  # Se rellena en la view con Gemini
+            'explicacion': None,
+        })
+
+    return resultados
+
+
+def recomendar_catalogo(
+    tipo_uso: str,
+    tipo_equipo: Literal['laptop', 'pc_escritorio', 'ambos'] = 'ambos',
+    top_n: int = 30,
+) -> list[dict]:
+    """
+    Retorna todos los equipos del catálogo ordenados por score de afinidad,
+    sin filtro de presupuesto. Útil para exploración y comparación completa.
+
+    Args:
+        tipo_uso: Perfil de uso ('gaming', 'diseño', etc.)
+        tipo_equipo: 'laptop', 'pc_escritorio' o 'ambos'.
+        top_n: Número máximo de resultados.
+
+    Returns:
+        Lista de dicts con datos del equipo + campos de beneficio y score.
+    """
+    import re
+    from equipos.models import Equipo
+
+    qs = Equipo.objects.all()
+    if tipo_equipo != 'ambos':
+        qs = qs.filter(tipo=tipo_equipo)
+
+    equipos = list(qs)
+    if not equipos:
+        return []
+
+    query = PERFILES_USO.get(tipo_uso, tipo_uso)
+    textos_equipos = [_construir_texto_equipo(e) for e in equipos]
+    corpus = [query] + textos_equipos
+
+    vectorizer = TfidfVectorizer(
+        analyzer='word',
+        ngram_range=(1, 2),
+        min_df=1,
+        sublinear_tf=True,
+    )
+    tfidf_matrix = vectorizer.fit_transform(corpus)
+    query_vec = tfidf_matrix[0]
+    equipos_matrix = tfidf_matrix[1:]
+    scores = cosine_similarity(query_vec, equipos_matrix).flatten()
+
+    indices_ordenados = np.argsort(scores)[::-1][:top_n]
+    max_score = float(np.max(scores)) if len(scores) > 0 and float(np.max(scores)) > 0 else 1.0
+
+    resultados = []
+    for idx in indices_ordenados:
+        equipo = equipos[idx]
+        score = float(scores[idx])
+
+        # Beneficio sin presupuesto — basado en afinidad + hardware
+        afinidad_rel = (score / max_score) if max_score > 0 else 0.5
+        pts_tecnicos = afinidad_rel * 65.0
+        pts_hardware = 0.0
+        if equipo.memoria_ram >= 16:
+            pts_hardware += 5.0
+        elif equipo.memoria_ram >= 8:
+            pts_hardware += 2.5
+        alm = (equipo.almacenamiento or '').lower()
+        if 'ssd' in alm or 'nvme' in alm:
+            pts_hardware += 4.0
+        gpu = (equipo.tarjeta_grafica or '').lower()
+        if any(g in gpu for g in ['rtx', 'gtx', 'radeon', 'geforce', 'rx ']):
+            pts_hardware += 5.0
+        else:
+            pts_hardware += 1.5
+
+        total_beneficio = int(round(pts_tecnicos + pts_hardware))
+        total_beneficio = max(60, min(98, total_beneficio))
+
+        if total_beneficio >= 92:
+            etiqueta_beneficio = "Excelente opción · Máximo beneficio"
+        elif total_beneficio >= 82:
+            etiqueta_beneficio = "Muy beneficioso · Gran balance"
+        else:
+            etiqueta_beneficio = "Buena alternativa · Precio accesible"
+
+        enlace = equipo.enlace_compra or ''
+        if not enlace or 'MPE-' in enlace or 'articulo.mercadolibre' in enlace:
+            clean_marca = '' if equipo.marca.lower() in equipo.modelo.lower() or 'custom' in equipo.marca.lower() else equipo.marca
+            name = f"{clean_marca} {equipo.modelo}".strip()
+            slug = re.sub(r'[^a-zA-Z0-9]+', '-', name.lower()).strip('-')
+            enlace = f"https://listado.mercadolibre.com.pe/{slug}"
+
+        resultados.append({
+            'id': equipo.id,
+            'tipo': equipo.tipo,
+            'marca': equipo.marca,
+            'modelo': equipo.modelo,
+            'procesador': equipo.procesador,
+            'memoria_ram': equipo.memoria_ram,
+            'almacenamiento': equipo.almacenamiento,
+            'tarjeta_grafica': equipo.tarjeta_grafica,
+            'tamanio_pantalla': equipo.tamanio_pantalla,
+            'precio': float(equipo.precio),
+            'tienda': equipo.tienda,
+            'enlace_compra': equipo.enlace_compra or enlace,
+            'imagen_url': equipo.imagen_url or None,
+            'ciudad': equipo.ciudad,
+            'departamento': equipo.departamento,
+            'score_afinidad': round(score, 4),
+            'porcentaje_beneficio': total_beneficio,
+            'etiqueta_beneficio': etiqueta_beneficio,
+            'ahorro': 0,
+            'explicacion': None,
         })
 
     return resultados

@@ -34,6 +34,8 @@ services:
         sync: false            # Completar con el dominio de Render: tu-app.onrender.com
       - key: GEMINI_API_KEY
         sync: false            # Tu clave de Google Gemini
+      - key: SERPAPI_KEY
+        sync: false            # Tu clave de SerpAPI para scraping en tiempo real
       # ── Base de datos (se configura automáticamente si usas el DB de Render) ──
       - key: DB_NAME
         fromDatabase:

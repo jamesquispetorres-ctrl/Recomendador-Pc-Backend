@@ -157,83 +157,196 @@ class MercadoLibreClient:
         self.session = requests.Session()
         self.session.headers.update(HEADERS_MERCADOLIBRE)
 
-        from equipos.scraping.ml_auth import obtener_token_valido
+        # Estrategia de autenticación:
+        # 1. Token explícito (si se pasa como argumento)
+        # 2. App-level token via client_credentials (para búsqueda de catálogo)
+        # 3. User token existente en .env (access_token del flujo Authorization Code)
+        token = access_token or self._obtener_app_token() or self._obtener_user_token()
 
-        # Obtener token válido (o refrescarlo automáticamente si ya teníamos refresh_token)
-        token = access_token or obtener_token_valido()
         if token:
+            token_type = 'app-level' if token and not token.startswith('APP_USR-') else 'user-level'
+            logger.info(
+                "[Mercado Libre] Token configurado (%s): %s...",
+                token_type,
+                token[:20] if token else 'ninguno',
+            )
             self.session.headers['Authorization'] = f'Bearer {token}'
+        else:
+            logger.warning(
+                "[Mercado Libre] Sin token de autenticación. "
+                "Las búsquedas probablemente retornarán 403."
+            )
+
+    def _obtener_app_token(self) -> str | None:
+        """
+        Obtiene un token de aplicación (client_credentials) para búsquedas
+        de catálogo que no requieren sesión de usuario.
+        """
+        import os
+        client_id = os.environ.get('ML_CLIENT_ID', '').strip()
+        client_secret = os.environ.get('ML_CLIENT_SECRET', '').strip()
+
+        if not client_id or not client_secret:
+            logger.warning("[Mercado Libre] ML_CLIENT_ID o ML_CLIENT_SECRET no configurados.")
+            return None
+
+        try:
+            resp = requests.post(
+                'https://api.mercadolibre.com/oauth/token',
+                data={
+                    'grant_type': 'client_credentials',
+                    'client_id': client_id,
+                    'client_secret': client_secret,
+                },
+                headers={
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                token = resp.json().get('access_token')
+                logger.info(
+                    "[Mercado Libre] Token app-level (client_credentials) obtenido: %s...",
+                    token[:20] if token else 'vacio',
+                )
+                return token
+            else:
+                logger.warning(
+                    "[Mercado Libre] client_credentials respondió %d: %s",
+                    resp.status_code,
+                    resp.text[:200],
+                )
+                return None
+        except Exception as exc:
+            logger.warning("[Mercado Libre] Error al obtener app token: %s", exc)
+            return None
+
+    def _obtener_user_token(self) -> str | None:
+        """Devuelve el user token guardado en .env como fallback."""
+        from equipos.scraping.ml_auth import obtener_token_valido
+        return obtener_token_valido()
 
     def buscar_por_termino(self, query: str, limit: int = 50, tipo_equipo: str = 'laptop') -> list[dict]:
         """
-        Consulta el endpoint de búsqueda de Mercado Libre para el sitio MPE con una palabra clave.
+        Consulta el endpoint de búsqueda pública de Mercado Libre para el sitio MPE.
 
-        Endpoint:
-            GET https://api.mercadolibre.com/sites/MPE/search?q={query}&limit={limit}
+        Estrategia (en orden):
+          1. Búsqueda anónima (sin token) — la API pública de catálogo no requiere auth.
+          2. Si 401/403, reintento con el token de app (Authorization header).
+          3. Si falla, retorna [] para activar el fallback de ml_real_data.json.
 
-        Si el token expira (401), se renueva automáticamente con el refresh_token y reintenta.
-        Si la petición falla por cualquier otro motivo, se registra el error sin detener el proceso.
+        El envío de un token con scopes insuficientes puede causar 403 incluso
+        en endpoints públicos, por eso se prueba primero sin credenciales.
         """
         url = f"{self.BASE_URL}/sites/{self.SITE_ID}/search"
-        params = {
-            'q': query,
-            'limit': limit,
+        params = {'q': query, 'limit': limit}
+
+        # ── INTENTO 1: Búsqueda pública sin token ────────────────────────────
+        # El endpoint de catálogo público de ML no requiere auth para lecturas.
+        # Enviar un token con scope insuficiente causa 403, por eso se omite aquí.
+        public_headers = {
+            'User-Agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/124.0.0.0 Safari/537.36'
+            ),
+            'Accept': 'application/json',
+            'Accept-Language': 'es-PE,es;q=0.9',
+            'Referer': 'https://www.mercadolibre.com.pe/',
+            'Origin': 'https://www.mercadolibre.com.pe',
         }
 
-        logger.info("[Mercado Libre] Consultando API para '%s' (sitio: %s)...", query, self.SITE_ID)
+        print(f"[ML DIAGNÓSTICO] Intento 1: búsqueda anónima (sin token) para '{query}'")
+        logger.info("[Mercado Libre] Intento 1 — búsqueda anónima de '%s'...", query)
 
         try:
-            response = self.session.get(url, params=params, timeout=12)
+            resp_anon = requests.get(url, params=params, headers=public_headers, timeout=12)
+            print(
+                f"[ML DIAGNÓSTICO] Intento 1 — HTTP {resp_anon.status_code} para '{query}'"
+                f" | Body inicio: {resp_anon.text[:120]}"
+            )
 
-            # Si el token expiró (401), intentar refrescar automáticamente y reintentar una vez
-            if response.status_code == 401:
-                logger.info("[Mercado Libre] Token expirado (401). Intentando renovación automática con refresh_token...")
-                try:
-                    from equipos.scraping.ml_auth import refrescar_token
-                    data_refresh = refrescar_token()
-                    nuevo_token = data_refresh.get('access_token')
-                    if nuevo_token:
-                        self.session.headers['Authorization'] = f'Bearer {nuevo_token}'
-                        logger.info("[Mercado Libre] Reintentando búsqueda de '%s' con nuevo token renovado...", query)
-                        response = self.session.get(url, params=params, timeout=12)
-                except Exception as rf_exc:
-                    logger.warning("[Mercado Libre] No se pudo refrescar el token automáticamente: %s", rf_exc)
-
-            if response.status_code != 200:
-                logger.warning(
-                    "[Mercado Libre] La API respondió con código %d al buscar '%s': %s",
-                    response.status_code,
-                    query,
-                    response.text[:200],
+            if resp_anon.status_code == 200:
+                data = resp_anon.json()
+                results = data.get('results', [])
+                total = data.get('paging', {}).get('total', len(results))
+                print(
+                    f"[ML DIAGNÓSTICO] ✅ INTENTO 1 EXITOSO — '{query}'"
+                    f" | Resultados: {len(results)} | Total en ML: {total}"
                 )
-                return []
-
-            data = response.json()
-            results = data.get('results', [])
-            logger.info("[Mercado Libre] Se obtuvieron %d resultados desde la API para '%s'.", len(results), query)
-
-            for item in results:
-                item['_tipo'] = tipo_equipo
-
-            return results
+                logger.info(
+                    "[Mercado Libre] ✅ Búsqueda anónima exitosa '%s': %d resultados (total: %d).",
+                    query, len(results), total,
+                )
+                for item in results:
+                    item['_tipo'] = tipo_equipo
+                return results
 
         except requests.RequestException as exc:
-            # Requisito: registrar el error en el registro de eventos sin detener el resto del proceso
-            logger.error(
-                "[Mercado Libre] Error de conexión o timeout al consultar la API para '%s': %s",
-                query,
-                exc,
-                exc_info=True,
-            )
-            return []
-        except Exception as exc:
-            logger.error(
-                "[Mercado Libre] Excepción inesperada al procesar respuesta de '%s': %s",
-                query,
-                exc,
-                exc_info=True,
-            )
-            return []
+            print(f"[ML DIAGNÓSTICO] Intento 1 falló por red: {exc}")
+            logger.warning("[Mercado Libre] Error de red en intento anónimo: %s", exc)
+
+        # ── INTENTO 2: Con token de aplicación ────────────────────────────────
+        token_actual = self.session.headers.get('Authorization', '')
+        if token_actual:
+            print(f"[ML DIAGNÓSTICO] Intento 2: con token (Authorization header) para '{query}'")
+            logger.info("[Mercado Libre] Intento 2 — búsqueda con token para '%s'...", query)
+            try:
+                resp_token = self.session.get(url, params=params, timeout=12)
+                print(
+                    f"[ML DIAGNÓSTICO] Intento 2 — HTTP {resp_token.status_code} para '{query}'"
+                    f" | Body inicio: {resp_token.text[:120]}"
+                )
+
+                if resp_token.status_code == 401:
+                    # Intentar renovar token y reintentar
+                    try:
+                        from equipos.scraping.ml_auth import refrescar_token
+                        data_refresh = refrescar_token()
+                        nuevo_token = data_refresh.get('access_token')
+                        if nuevo_token:
+                            self.session.headers['Authorization'] = f'Bearer {nuevo_token}'
+                            resp_token = self.session.get(url, params=params, timeout=12)
+                            print(f"[ML DIAGNÓSTICO] Reintento tras refresh: HTTP {resp_token.status_code}")
+                    except Exception as rf_exc:
+                        logger.warning("[Mercado Libre] No se pudo refrescar el token: %s", rf_exc)
+
+                if resp_token.status_code == 200:
+                    data = resp_token.json()
+                    results = data.get('results', [])
+                    total = data.get('paging', {}).get('total', len(results))
+                    print(
+                        f"[ML DIAGNÓSTICO] ✅ INTENTO 2 EXITOSO — '{query}'"
+                        f" | Resultados: {len(results)} | Total en ML: {total}"
+                    )
+                    logger.info(
+                        "[Mercado Libre] ✅ Búsqueda con token exitosa '%s': %d resultados.",
+                        query, len(results),
+                    )
+                    for item in results:
+                        item['_tipo'] = tipo_equipo
+                    return results
+                else:
+                    logger.warning(
+                        "[Mercado Libre] Intento 2 también falló (%d) para '%s': %s",
+                        resp_token.status_code, query, resp_token.text[:200],
+                    )
+
+            except requests.RequestException as exc:
+                logger.error("[Mercado Libre] Error de red en intento con token: %s", exc)
+                print(f"[ML DIAGNÓSTICO] Intento 2 falló por red: {exc}")
+
+        # Ambos intentos fallaron
+        print(
+            f"[ML DIAGNÓSTICO] ❌ AMBOS INTENTOS FALLARON para '{query}'"
+            f" — se activará el fallback ml_real_data.json"
+        )
+        logger.warning(
+            "[Mercado Libre] Ambos intentos fallaron para '%s'. Se usará el fallback.",
+            query,
+        )
+        return []
 
     def obtener_equipos(self, limit_por_categoria: int = 50) -> list[dict]:
         """
@@ -261,9 +374,15 @@ class MercadoLibreClient:
             if parsed:
                 equipos_extraidos.append(parsed)
 
-        # Si la API directa está restringida (HTTP 403), cargar el catálogo de productos
+        # ── RESUMEN DE DIAGNÓSTICO ────────────────────────────────────────────
+        print(f"[ML DIAGNÓSTICO] Items de laptops parseados desde API: {len([e for e in equipos_extraidos if e.get('tipo') == 'laptop'])}")
+        print(f"[ML DIAGNÓSTICO] Items de PCs parseados desde API: {len([e for e in equipos_extraidos if e.get('tipo') == 'pc_escritorio'])}")
+        print(f"[ML DIAGNÓSTICO] Total extraídos desde API real: {len(equipos_extraidos)}")
+
+        # Si la API directa está restringida (HTTP 403/401), cargar el catálogo de productos
         # reales y activos extraídos directamente de Mercado Libre Perú (ml_real_data.json)
         if not equipos_extraidos:
+            print("[ML DIAGNÓSTICO] API real devolvió 0 resultados → activando fallback ml_real_data.json")
             real_data_path = Path(__file__).resolve().parent / 'ml_real_data.json'
             if real_data_path.exists():
                 try:

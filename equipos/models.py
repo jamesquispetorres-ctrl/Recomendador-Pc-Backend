@@ -53,10 +53,11 @@ class Equipo(models.Model):
     precio = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        verbose_name='Precio (COP)',
+        verbose_name='Precio (S/.)',
     )
     tienda = models.CharField(max_length=150, verbose_name='Tienda')
-    enlace_compra = models.URLField(max_length=500, verbose_name='Enlace de Compra')
+    enlace_compra = models.URLField(max_length=1000, verbose_name='Enlace de Compra')
+    imagen_url = models.URLField(max_length=1000, blank=True, null=True, verbose_name='Imagen / Thumbnail')
 
     # ── Ubicación ─────────────────────────────────────────────────────────────
     ciudad = models.CharField(max_length=100, verbose_name='Ciudad')

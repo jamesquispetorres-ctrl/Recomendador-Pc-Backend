@@ -33,6 +33,7 @@ class EquipoSerializer(serializers.ModelSerializer):
             'precio',
             'tienda',
             'enlace_compra',
+            'imagen_url',
             'ciudad',
             'departamento',
             'historial_precios',
@@ -52,5 +53,5 @@ class EquipoListSerializer(serializers.ModelSerializer):
             'id', 'tipo', 'marca', 'modelo', 'procesador',
             'memoria_ram', 'almacenamiento', 'tarjeta_grafica',
             'tamanio_pantalla', 'precio', 'tienda', 'enlace_compra',
-            'ciudad', 'departamento',
+            'imagen_url', 'ciudad', 'departamento',
         ]
