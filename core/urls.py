@@ -15,16 +15,29 @@ router = DefaultRouter()
 router.register(r'equipos', EquipoViewSet, basename='equipo')
 
 
+from django.db import connection
+
+
 def health_check(request):
     """
     Endpoint de salud para monitoreo con UptimeRobot.
-    GET /api/health/  →  {"status": "ok", "timestamp": "..."}
+    Realiza una consulta SELECT 1 para mantener despierto tanto el Web Service
+    como la base de datos PostgreSQL en Render.
+    GET /api/health/  →  {"status": "ok", "database": "ok", "timestamp": "..."}
     """
+    db_ok = True
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1;")
+    except Exception:
+        db_ok = False
+
     return JsonResponse({
-        'status': 'ok',
+        'status': 'ok' if db_ok else 'degraded',
+        'database': 'connected' if db_ok else 'disconnected',
         'timestamp': timezone.now().isoformat(),
         'version': '1.0.0',
-    })
+    }, status=200 if db_ok else 503)
 
 
 def mercadolibre_callback(request):
